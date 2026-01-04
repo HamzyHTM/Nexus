@@ -8,7 +8,7 @@ export interface Message {
   text: string;
   timestamp: number;
   status: MessageStatus;
-  reactions: Record<string, string[]>; 
+  reactions: Record<string, string[]>;
   isDeleted?: boolean;
 }
 
@@ -35,4 +35,9 @@ export interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+}
+
+export interface SocketEvent {
+  type: 'message' | 'typing' | 'status' | 'reaction';
+  payload: any;
 }

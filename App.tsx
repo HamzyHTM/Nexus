@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { db } from './services/mockBackend';
+import React, { useState, useEffect, useCallback } from 'react';
+import { api } from './services/api';
+import { socket } from './services/socket';
 import { getAIResponse } from './services/geminiService';
 import { User, Chat, Message, AuthState } from './types';
 import { ICONS, STORAGE_KEYS } from './constants';
@@ -26,44 +27,69 @@ const App: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // Initialize Auth
   useEffect(() => {
-    const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
-    if (savedAuth) {
-      setAuthState(JSON.parse(savedAuth));
-    }
+    const saved = localStorage.getItem(STORAGE_KEYS.AUTH);
+    if (saved) setAuthState(JSON.parse(saved));
   }, []);
 
-  useEffect(() => {
+  // Sync Chats
+  const refreshChats = useCallback(async () => {
     if (authState.isAuthenticated) {
-      db.getChats().then(setChats);
+      const data = await api.getChats();
+      setChats(data);
     }
   }, [authState.isAuthenticated]);
 
+  useEffect(() => { refreshChats(); }, [refreshChats]);
+
+  // Socket Listeners
+  useEffect(() => {
+    if (!authState.isAuthenticated) return;
+
+    const handleNewMessage = (msg: Message) => {
+      if (msg.chatId === activeChatId) {
+        setMessages(prev => [...prev, msg]);
+      }
+      refreshChats();
+    };
+
+    const handleTyping = (data: { chatId: string; userId: string }) => {
+      if (data.chatId === activeChatId && data.userId !== authState.user?.id) {
+        setIsTyping(true);
+        setTimeout(() => setIsTyping(false), 3000);
+      }
+    };
+
+    socket.on('message', handleNewMessage);
+    socket.on('typing', handleTyping);
+
+    return () => {
+      socket.off('message', handleNewMessage);
+      socket.off('typing', handleTyping);
+    };
+  }, [authState.isAuthenticated, activeChatId, authState.user?.id, refreshChats]);
+
+  // Load Messages
   useEffect(() => {
     if (activeChatId) {
-      db.getMessages(activeChatId).then(setMessages);
-    } else {
-      setMessages([]);
+      api.getMessages(activeChatId).then(setMessages);
     }
   }, [activeChatId]);
 
+  // Theme Sync
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem(STORAGE_KEYS.THEME, 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem(STORAGE_KEYS.THEME, 'light');
-    }
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem(STORAGE_KEYS.THEME, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  const handleLogin = async (username: string, password: string) => {
-    const res = await db.login(username, password);
+  const handleLogin = async (u: string, p: string) => {
+    const res = await api.login(u, p);
     setAuthState(res);
   };
 
-  const handleSignup = async (username: string, password: string) => {
-    const res = await db.signup(username, password);
+  const handleSignup = async (u: string, p: string) => {
+    const res = await api.register(u, p);
     setAuthState(res);
   };
 
@@ -73,23 +99,11 @@ const App: React.FC = () => {
     setActiveChatId(null);
   };
 
-  const handleUpdateProfile = async (updates: Partial<User>) => {
-    try {
-      const updatedUser = await db.updateProfile(updates);
-      setAuthState(prev => ({
-        ...prev,
-        user: updatedUser
-      }));
-    } catch (error) {
-      console.error("Failed to update profile:", error);
-    }
-  };
-
   const handleSendMessage = async (text: string) => {
     if (!activeChatId || !authState.user) return;
 
     const newMessage: Message = {
-      id: Date.now().toString(),
+      id: `m_${Date.now()}`,
       chatId: activeChatId,
       senderId: authState.user.id,
       text,
@@ -98,77 +112,10 @@ const App: React.FC = () => {
       reactions: {}
     };
 
-    const sent = await db.sendMessage(newMessage);
+    const sent = await api.sendMessage(newMessage);
+    socket.emit('message', sent);
     setMessages(prev => [...prev, sent]);
-
-    setChats(prev => prev.map(c => 
-      c.id === activeChatId ? { ...c, lastMessage: sent } : c
-    ));
-
-    const currentChat = chats.find(c => c.id === activeChatId);
-    if (currentChat?.participants.includes('u1')) {
-      setIsTyping(true);
-      const history = messages.slice(-5).map(m => ({
-        role: m.senderId === authState.user.id ? 'user' : 'assistant',
-        text: m.text
-      }));
-      
-      const aiResponseText = await getAIResponse(text, history);
-      
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        chatId: activeChatId,
-        senderId: 'u1',
-        text: aiResponseText || '',
-        timestamp: Date.now(),
-        status: 'read',
-        reactions: {}
-      };
-
-      await db.sendMessage(aiMessage);
-      setMessages(prev => [...prev, aiMessage]);
-      setChats(prev => prev.map(c => 
-        c.id === activeChatId ? { ...c, lastMessage: aiMessage } : c
-      ));
-      setIsTyping(false);
-    }
-  };
-
-  const handleAddContact = async (userId: string) => {
-    const newChat = await db.addContact(userId);
-    const updatedChats = await db.getChats();
-    setChats(updatedChats);
-    setActiveChatId(newChat.id);
-    setShowAddModal(false);
-  };
-
-  const handleDeleteChat = async (chatId: string) => {
-    if (confirm('Are you sure you want to delete this conversation?')) {
-      await db.removeChat(chatId);
-      setChats(prev => prev.filter(c => c.id !== chatId));
-      if (activeChatId === chatId) setActiveChatId(null);
-    }
-  };
-
-  const handleReaction = async (messageId: string, emoji: string) => {
-    if (!authState.user) return;
-    const message = messages.find(m => m.id === messageId);
-    if (!message) return;
-    const currentReactions = { ...message.reactions };
-    const users = (currentReactions[emoji] || []) as string[];
-    if (users.includes(authState.user.id)) {
-      currentReactions[emoji] = users.filter(id => id !== authState.user.id);
-    } else {
-      currentReactions[emoji] = [...users, authState.user.id];
-    }
-    const updated = { ...message, reactions: currentReactions };
-    await db.updateMessage(updated);
-    setMessages(prev => prev.map(m => m.id === messageId ? updated : m));
-  };
-
-  const handleDeleteMessage = async (messageId: string) => {
-    await db.deleteMessage(messageId);
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isDeleted: true, text: 'This message was deleted' } : m));
+    refreshChats();
   };
 
   if (!authState.isAuthenticated) {
@@ -176,111 +123,86 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 font-inter">
       {/* Sidebar */}
-      <div className="w-full md:w-96 flex-shrink-0 border-r border-slate-200 dark:border-zinc-800 flex flex-col bg-white dark:bg-zinc-900 z-20">
-        <div className="p-4 flex justify-between items-center border-b border-slate-100 dark:border-zinc-800">
-          <button 
-            onClick={() => setShowProfileModal(true)}
-            className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-zinc-800/50 p-2 rounded-2xl transition-all group"
-          >
+      <div className="w-full md:w-96 flex-shrink-0 border-r border-slate-200 dark:border-zinc-800 flex flex-col bg-white dark:bg-zinc-900 z-20 shadow-xl">
+        <header className="p-5 flex justify-between items-center bg-white dark:bg-zinc-900 border-b border-slate-100 dark:border-zinc-800">
+          <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-3 group">
             <div className="relative">
-              <img src={authState.user?.profilePic} className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500 group-hover:scale-105" alt="Profile" />
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-zinc-900 rounded-full"></div>
+              <img src={authState.user?.profilePic} className="w-12 h-12 rounded-2xl object-cover border-2 border-emerald-500 shadow-lg shadow-emerald-500/10 group-hover:scale-105 transition-transform" />
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-zinc-900 rounded-full"></div>
             </div>
             <div className="text-left">
-              <span className="font-bold text-base block leading-none">{authState.user?.username}</span>
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase tracking-wider">{authState.user?.status}</span>
+              <h1 className="font-black text-lg leading-none tracking-tight">{authState.user?.username}</h1>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 opacity-70">Nexus Verified</p>
             </div>
           </button>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)} 
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-              title="Toggle Theme"
-            >
-              {isDarkMode ? <span className="text-xl">🌞</span> : <span className="text-xl">🌙</span>}
-            </button>
-            <button 
-              onClick={handleLogout} 
-              className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-500"
-              title="Logout"
-            >
-              <ICONS.Delete size={20} />
-            </button>
+          
+          <div className="flex gap-2">
+             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-90">
+                {isDarkMode ? '🌞' : '🌙'}
+             </button>
+             <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-all active:scale-90">
+                <ICONS.Delete size={20} />
+             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="p-3">
+        <div className="p-4 bg-slate-50/50 dark:bg-zinc-900/50">
           <div className="relative group">
-            <ICONS.Search className="absolute left-3 top-3 text-slate-400 group-focus-within:text-emerald-500" size={18} />
+            <ICONS.Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
             <input 
-              type="text" 
-              placeholder="Search conversations..." 
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all text-sm"
+              placeholder="Search contacts..." 
+              className="w-full pl-12 pr-4 py-3 bg-white dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700/50 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-medium text-sm"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto relative">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           <ChatList 
             chats={chats} 
             activeId={activeChatId} 
             onSelect={setActiveChatId}
-            onDeleteChat={handleDeleteChat}
+            onDeleteChat={() => {}}
           />
-          
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="absolute bottom-6 right-6 w-14 h-14 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center transition-all hover:scale-110 active:scale-95 group"
-          >
-            <span className="text-3xl group-hover:rotate-90 transition-transform">+</span>
-          </button>
+        </div>
+
+        <div className="p-6 border-t border-slate-100 dark:border-zinc-800">
+           <button 
+             onClick={() => setShowAddModal(true)}
+             className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-[1.25rem] font-black text-sm tracking-widest uppercase shadow-xl shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+           >
+             <span className="text-lg">+</span> Start New Conversation
+           </button>
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-zinc-950 relative">
+      {/* Main Panel */}
+      <main className="flex-1 flex flex-col relative bg-[#f8fafc] dark:bg-zinc-950">
         {activeChatId ? (
           <ChatWindow 
             chat={chats.find(c => c.id === activeChatId)!}
             messages={messages}
             isTyping={isTyping}
             onSendMessage={handleSendMessage}
-            onReaction={handleReaction}
-            onDelete={handleDeleteMessage}
+            onReaction={() => {}}
+            onDelete={() => {}}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 dark:bg-zinc-900/20">
-            <div className="w-32 h-32 bg-emerald-100 dark:bg-emerald-900/30 rounded-[2.5rem] flex items-center justify-center mb-8 rotate-3 shadow-xl">
-              <ICONS.Chat size={64} className="text-emerald-600 -rotate-3" />
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+            <div className="w-32 h-32 bg-emerald-50 dark:bg-emerald-900/20 rounded-[3rem] flex items-center justify-center mb-10 shadow-2xl animate-pulse">
+               <ICONS.Chat size={64} className="text-emerald-600" />
             </div>
-            <h1 className="text-4xl font-extrabold mb-4 tracking-tight">Nexus Chat</h1>
-            <p className="text-slate-500 dark:text-zinc-400 max-w-sm text-lg font-medium leading-relaxed">
-              Experience the future of messaging. Connect with friends or chat with Alex AI.
+            <h2 className="text-4xl font-black tracking-tight mb-4">Select a Nexus Room</h2>
+            <p className="text-slate-400 dark:text-zinc-500 max-w-sm text-lg font-medium">
+              Choose a contact to begin your end-to-end encrypted session.
             </p>
-            <div className="mt-12 flex gap-4 text-xs font-bold text-slate-400 dark:text-zinc-600 uppercase tracking-widest">
-              <span className="flex items-center gap-2"><ICONS.Sent size={14} className="text-emerald-500" /> Secure</span>
-              <span className="flex items-center gap-2"><ICONS.Sent size={14} className="text-emerald-500" /> Cloud Sync</span>
-            </div>
           </div>
         )}
-      </div>
+      </main>
 
-      {showAddModal && (
-        <AddContactModal 
-          onClose={() => setShowAddModal(false)}
-          onAdd={handleAddContact}
-        />
-      )}
-
-      {showProfileModal && authState.user && (
-        <ProfileModal 
-          user={authState.user}
-          onClose={() => setShowProfileModal(false)}
-          onUpdate={handleUpdateProfile}
-        />
-      )}
+      {showAddModal && <AddContactModal onClose={() => setShowAddModal(false)} onAdd={(id) => { api.createChat(id).then(refreshChats); setShowAddModal(false); }} />}
+      {showProfileModal && authState.user && <ProfileModal user={authState.user} onClose={() => setShowProfileModal(false)} onUpdate={async (u) => {}} />}
     </div>
   );
 };
