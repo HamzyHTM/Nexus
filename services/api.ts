@@ -3,8 +3,8 @@ import { User, Chat, Message, AuthState, FriendRequest } from '../types';
 import { STORAGE_KEYS } from '../constants';
 import { socket } from './socket';
 
-// Incrementing version to ensure the new "Pioneer" seed data is applied
-const DB_VERSION = '2.6.0'; 
+// Incrementing version to 2.7.0 to wipe all previous pioneer/mock data
+const DB_VERSION = '2.7.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -21,7 +21,7 @@ class ApiService {
   private checkVersionAndReset() {
     const storedVersion = localStorage.getItem(VERSION_KEY);
     if (storedVersion !== DB_VERSION) {
-      console.log(`[Database] Initializing Registry Version ${DB_VERSION}`);
+      console.log(`[Database] Initializing Clean Registry Version ${DB_VERSION}`);
       localStorage.removeItem(USERS_DB);
       localStorage.removeItem(CHATS_DB);
       localStorage.removeItem(MESSAGES_DB);
@@ -47,46 +47,21 @@ class ApiService {
   private seedDatabase() {
     const users = this.get(USERS_DB);
     if (users.length === 0) {
-      // Seed the database with "Pioneer Members" and "System Assistants"
-      const initialUsers: any[] = [
+      // Registry starts completely empty for a true production-ready feel.
+      // We only keep a hidden system entry for AI internal logic if needed, 
+      // but it is tagged as 'system' so it won't appear in member searches.
+      const systemUsers: any[] = [
         { 
           id: 'u_alex_ai', 
           username: 'Alex AI', 
           password: 'password',
           profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus', 
-          status: 'Always here to help you navigate.', 
+          status: 'Nexus AI Core', 
           isOnline: true,
           role: 'system'
-        },
-        { 
-          id: 'u_sarah_pioneer', 
-          username: 'Sarah Jenkins', 
-          password: 'password',
-          profilePic: 'https://picsum.photos/seed/sarah/200', 
-          status: 'Nexus Community Pioneer', 
-          isOnline: true,
-          role: 'member'
-        },
-        { 
-          id: 'u_mike_pioneer', 
-          username: 'Mike Ross', 
-          password: 'password',
-          profilePic: 'https://picsum.photos/seed/mike/200', 
-          status: 'Ready to connect!', 
-          isOnline: false,
-          role: 'member'
-        },
-        { 
-          id: 'u_jessica_pioneer', 
-          username: 'Jessica Pearson', 
-          password: 'password',
-          profilePic: 'https://picsum.photos/seed/jessica/200', 
-          status: 'Nexus Resident', 
-          isOnline: true,
-          role: 'member'
         }
       ];
-      this.save(USERS_DB, initialUsers);
+      this.save(USERS_DB, systemUsers);
     }
   }
 
@@ -121,7 +96,7 @@ class ApiService {
       id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
       username: normalizedUsername, 
       profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedUsername}`, 
-      status: 'Nexus Community Member', 
+      status: 'New Nexus Citizen', 
       isOnline: true,
       role: 'member'
     };
@@ -148,9 +123,9 @@ class ApiService {
     const auth = authString ? JSON.parse(authString) : {};
     const q = query.trim().toLowerCase();
     
-    // Filter out:
-    // 1. The current user themselves
-    // 2. Only show 'member' role (Real registered users/pioneers)
+    // STRICT FILTER: 
+    // 1. Not the current logged-in user
+    // 2. ONLY 'member' role (Real users who signed up)
     let filtered = users.filter((u: User) => u.id !== auth.user?.id && u.role === 'member');
 
     if (q) {
