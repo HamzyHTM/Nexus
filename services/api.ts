@@ -3,8 +3,8 @@ import { User, Chat, Message, AuthState, FriendRequest } from '../types';
 import { STORAGE_KEYS } from '../constants';
 import { socket } from './socket';
 
-// Incrementing version to force a database reset for the new "registered-only" logic
-const DB_VERSION = '2.5.0'; 
+// Incrementing version to ensure the new "Pioneer" seed data is applied
+const DB_VERSION = '2.6.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -21,7 +21,7 @@ class ApiService {
   private checkVersionAndReset() {
     const storedVersion = localStorage.getItem(VERSION_KEY);
     if (storedVersion !== DB_VERSION) {
-      console.log(`[Database] Resetting storage for version ${DB_VERSION} (Real Users Only Mode)`);
+      console.log(`[Database] Initializing Registry Version ${DB_VERSION}`);
       localStorage.removeItem(USERS_DB);
       localStorage.removeItem(CHATS_DB);
       localStorage.removeItem(MESSAGES_DB);
@@ -46,21 +46,47 @@ class ApiService {
 
   private seedDatabase() {
     const users = this.get(USERS_DB);
-    // We no longer seed with "Sarah", "Mike", etc. 
-    // We only seed a single system AI for functionality, but we will filter it from search.
     if (users.length === 0) {
-      const systemUsers: any[] = [
+      // Seed the database with "Pioneer Members" and "System Assistants"
+      const initialUsers: any[] = [
         { 
           id: 'u_alex_ai', 
           username: 'Alex AI', 
-          password: 'password', // System hidden
-          profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', 
-          status: 'Artificial Intelligence Assistant', 
+          password: 'password',
+          profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus', 
+          status: 'Always here to help you navigate.', 
           isOnline: true,
           role: 'system'
+        },
+        { 
+          id: 'u_sarah_pioneer', 
+          username: 'Sarah Jenkins', 
+          password: 'password',
+          profilePic: 'https://picsum.photos/seed/sarah/200', 
+          status: 'Nexus Community Pioneer', 
+          isOnline: true,
+          role: 'member'
+        },
+        { 
+          id: 'u_mike_pioneer', 
+          username: 'Mike Ross', 
+          password: 'password',
+          profilePic: 'https://picsum.photos/seed/mike/200', 
+          status: 'Ready to connect!', 
+          isOnline: false,
+          role: 'member'
+        },
+        { 
+          id: 'u_jessica_pioneer', 
+          username: 'Jessica Pearson', 
+          password: 'password',
+          profilePic: 'https://picsum.photos/seed/jessica/200', 
+          status: 'Nexus Resident', 
+          isOnline: true,
+          role: 'member'
         }
       ];
-      this.save(USERS_DB, systemUsers);
+      this.save(USERS_DB, initialUsers);
     }
   }
 
@@ -118,12 +144,13 @@ class ApiService {
 
   async searchUsers(query: string): Promise<User[]> {
     const users = this.get(USERS_DB);
-    const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
+    const authString = localStorage.getItem(STORAGE_KEYS.AUTH);
+    const auth = authString ? JSON.parse(authString) : {};
     const q = query.trim().toLowerCase();
     
-    // EXCLUSIVE FILTER: 
-    // 1. Not the current user
-    // 2. ONLY 'member' role (removes all system/mock contacts)
+    // Filter out:
+    // 1. The current user themselves
+    // 2. Only show 'member' role (Real registered users/pioneers)
     let filtered = users.filter((u: User) => u.id !== auth.user?.id && u.role === 'member');
 
     if (q) {

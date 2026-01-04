@@ -16,6 +16,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
   const [loading, setLoading] = useState(false);
   const [statusMap, setStatusMap] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
 
+  // Fetch users immediately on mount and whenever query changes
   useEffect(() => {
     const fetchUsers = async () => {
       setLoading(true);
@@ -29,7 +30,8 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
       }
     };
 
-    const timer = setTimeout(fetchUsers, query.trim() ? 200 : 0);
+    // Use zero delay if query is empty for instant initial population
+    const timer = setTimeout(fetchUsers, query.trim() ? 250 : 0);
     return () => clearTimeout(timer);
   }, [query]);
 
@@ -52,10 +54,10 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         
         <div className="p-8 pb-4 flex justify-between items-start">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Find Peers</h2>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Discover</h2>
             <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-              Real-Time Member Registry
+              Resident Registry Access
             </p>
           </div>
           <button 
@@ -87,9 +89,9 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
 
           <div className="flex justify-between items-center mb-3 px-1">
              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">
-                {query.trim() ? 'Search Results' : 'Registered Members'}
+                {query.trim() ? 'Search Results' : 'Community Registry'}
              </h4>
-             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.length} Members Found</span>}
+             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.length} Profiles Available</span>}
           </div>
 
           <div className="max-h-[300px] overflow-y-auto space-y-3 custom-scrollbar pr-1">
@@ -131,9 +133,9 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
                 <div className="w-24 h-24 bg-slate-50 dark:bg-zinc-800/40 rounded-[2.5rem] flex items-center justify-center mx-auto mb-5 border-2 border-dashed border-slate-100 dark:border-zinc-700 opacity-40">
                   <ICONS.Profile size={40} className="text-slate-300" />
                 </div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Empty Registry</h3>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">Registry Empty</h3>
                 <p className="text-xs font-bold text-slate-400 mt-2 px-6">
-                  Only real users registered on the Nexus appear here. Tell a friend to sign up!
+                  Only registered community members appear here. Invite someone to join the Nexus!
                 </p>
               </div>
             )}
@@ -143,7 +145,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         <div className="p-6 bg-slate-50/50 dark:bg-zinc-800/50 text-center border-t border-slate-100 dark:border-zinc-800">
            <p className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-[0.4em] flex items-center justify-center gap-4">
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-             Nexus Protocol Verified Members
+             Nexus Verified Peer Network
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
            </p>
         </div>
