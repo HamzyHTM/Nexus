@@ -8,12 +8,41 @@ const MESSAGES_DB = 'nexus_messages_real';
 
 // This service acts as the 'Client API' layer
 class ApiService {
+  constructor() {
+    this.seedDatabase();
+  }
+
   private get(key: string) { return JSON.parse(localStorage.getItem(key) || '[]'); }
   private save(key: string, data: any) { localStorage.setItem(key, JSON.stringify(data)); }
 
+  private seedDatabase() {
+    const users = this.get(USERS_DB);
+    if (users.length === 0) {
+      const initialUsers = [
+        {
+          id: 'u_nexus_guide',
+          username: 'Nexus Guide',
+          password: 'password',
+          profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus',
+          status: 'Here to help you navigate!',
+          isOnline: true
+        },
+        {
+          id: 'u_alex_ai',
+          username: 'Alex AI',
+          password: 'password',
+          profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+          status: 'Always thinking...',
+          isOnline: true
+        }
+      ];
+      this.save(USERS_DB, initialUsers);
+    }
+  }
+
   async login(username: string, password: string): Promise<AuthState> {
     const users = this.get(USERS_DB);
-    const user = users.find((u: any) => u.username === username && u.password === password);
+    const user = users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     
     if (!user) throw new Error("Invalid credentials");
 
@@ -23,12 +52,19 @@ class ApiService {
       isAuthenticated: true
     };
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
+    
+    // Update online status in "DB"
+    const updatedUsers = users.map((u: any) => u.id === user.id ? { ...u, isOnline: true } : u);
+    this.save(USERS_DB, updatedUsers);
+
     return state;
   }
 
   async register(username: string, password: string): Promise<AuthState> {
     const users = this.get(USERS_DB);
-    if (users.find((u: any) => u.username === username)) throw new Error("User exists");
+    if (users.find((u: any) => u.username.toLowerCase() === username.toLowerCase())) {
+      throw new Error("Username already taken");
+    }
 
     const newUser = {
       id: `u_${Date.now()}`,
@@ -111,9 +147,20 @@ class ApiService {
   async searchUsers(query: string): Promise<User[]> {
     const users = this.get(USERS_DB);
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
+    const currentUserId = auth.user?.id;
+
+    // If no query, return up to 5 suggested users (excluding self)
+    if (!query.trim()) {
+      return users
+        .filter((u: User) => u.id !== currentUserId)
+        .slice(-5)
+        .reverse();
+    }
+
+    const q = query.toLowerCase();
     return users.filter((u: User) => 
-      u.id !== auth.user?.id && 
-      u.username.toLowerCase().includes(query.toLowerCase())
+      u.id !== currentUserId && 
+      u.username.toLowerCase().includes(q)
     );
   }
 }
