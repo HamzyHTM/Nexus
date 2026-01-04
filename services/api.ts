@@ -18,6 +18,7 @@ class ApiService {
   
   private save(key: string, data: any) { 
     localStorage.setItem(key, JSON.stringify(data)); 
+    // Trigger global storage event for cross-tab reactivity
     window.dispatchEvent(new Event('storage'));
   }
 
@@ -36,7 +37,13 @@ class ApiService {
     const users = this.get(USERS_DB);
     const user = users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     if (!user) throw new Error("Invalid credentials");
-    const state = { user: { ...user, isOnline: true } as User, token: `jwt_${Math.random()}`, isAuthenticated: true };
+    
+    const state = { 
+      user: { ...user, isOnline: true } as User, 
+      token: `jwt_${Math.random().toString(36).substr(2)}`, 
+      isAuthenticated: true 
+    };
+    
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
     this.save(USERS_DB, users.map((u: any) => u.id === user.id ? { ...u, isOnline: true } : u));
     return state;
@@ -44,28 +51,61 @@ class ApiService {
 
   async register(username: string, password: string): Promise<AuthState> {
     const users = this.get(USERS_DB);
-    if (users.find((u: any) => u.username.toLowerCase() === username.toLowerCase())) throw new Error("Taken");
-    const newUser = { id: `u_${Date.now()}`, username, password, profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`, status: 'New here!', isOnline: true };
+    if (users.find((u: any) => u.username.toLowerCase() === username.toLowerCase())) {
+      throw new Error("Username already taken in the Nexus registry");
+    }
+
+    const newUser = { 
+      id: `u_${Date.now()}`, 
+      username, 
+      password, 
+      profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`, 
+      status: 'Hey! I just joined the Nexus.', 
+      isOnline: true 
+    };
+
     users.push(newUser);
     this.save(USERS_DB, users);
-    const state = { user: newUser as User, token: `jwt_${Math.random()}`, isAuthenticated: true };
+
+    const state = { 
+      user: newUser as User, 
+      token: `jwt_${Math.random().toString(36).substr(2)}`, 
+      isAuthenticated: true 
+    };
+    
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
     return state;
   }
 
   async searchUsers(query: string): Promise<User[]> {
     if (!query.trim()) return [];
+    
     const users = this.get(USERS_DB);
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const q = query.toLowerCase();
-    return users.filter((u: User) => u.id !== auth.user?.id && u.username.toLowerCase().includes(q)).slice(0, 10);
+    
+    // Prioritize results that start with the query, then those that contain it
+    const startsWith = users.filter((u: User) => 
+      u.id !== auth.user?.id && u.username.toLowerCase().startsWith(q)
+    );
+    
+    const contains = users.filter((u: User) => 
+      u.id !== auth.user?.id && 
+      u.username.toLowerCase().includes(q) && 
+      !u.username.toLowerCase().startsWith(q)
+    );
+
+    return [...startsWith, ...contains].slice(0, 10);
   }
 
   async sendFriendRequest(toId: string): Promise<FriendRequest> {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const requests = this.get(REQUESTS_DB);
-    const existing = requests.find((r: FriendRequest) => r.fromId === auth.user.id && r.toId === toId && r.status === 'pending');
-    if (existing) throw new Error("Request already sent");
+    
+    const existing = requests.find((r: FriendRequest) => 
+      r.fromId === auth.user.id && r.toId === toId && r.status === 'pending'
+    );
+    if (existing) throw new Error("A request is already pending for this user.");
 
     const newReq: FriendRequest = {
       id: `req_${Date.now()}`,
@@ -75,6 +115,7 @@ class ApiService {
       status: 'pending',
       timestamp: Date.now()
     };
+    
     requests.push(newReq);
     this.save(REQUESTS_DB, requests);
     return newReq;
@@ -82,6 +123,7 @@ class ApiService {
 
   async getPendingRequests(): Promise<FriendRequest[]> {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
+    if (!auth.user) return [];
     const requests = this.get(REQUESTS_DB);
     return requests.filter((r: FriendRequest) => r.toId === auth.user.id && r.status === 'pending');
   }
@@ -103,7 +145,10 @@ class ApiService {
   async createChat(targetUserId: string): Promise<Chat> {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const chats = this.get(CHATS_DB);
-    const existing = chats.find((c: Chat) => c.participants.includes(auth.user.id) && c.participants.includes(targetUserId));
+    
+    const existing = chats.find((c: Chat) => 
+      c.participants.includes(auth.user.id) && c.participants.includes(targetUserId)
+    );
     if (existing) return existing;
 
     const newChat: Chat = {
@@ -112,6 +157,7 @@ class ApiService {
       participants: [auth.user.id, targetUserId],
       unreadCount: 0
     };
+    
     chats.push(newChat);
     this.save(CHATS_DB, chats);
     return newChat;
@@ -122,11 +168,17 @@ class ApiService {
     if (!auth.user) return [];
     const chats = this.get(CHATS_DB);
     const users = this.get(USERS_DB);
+    
     return chats.filter((c: Chat) => c.participants.includes(auth.user.id))
       .map((c: Chat) => {
         const otherId = c.participants.find(p => p !== auth.user.id);
         const otherUser = users.find((u: User) => u.id === otherId);
-        return { ...c, name: otherUser?.username || 'User', avatar: otherUser?.profilePic, isOnline: otherUser?.isOnline };
+        return { 
+          ...c, 
+          name: otherUser?.username || 'Nexus User', 
+          avatar: otherUser?.profilePic, 
+          isOnline: otherUser?.isOnline 
+        };
       });
   }
 
