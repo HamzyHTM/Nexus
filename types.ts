@@ -31,6 +31,15 @@ export interface Chat {
   avatar?: string;
 }
 
+export interface FriendRequest {
+  id: string;
+  fromId: string;
+  toId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  timestamp: number;
+  fromUsername?: string;
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;
@@ -38,6 +47,6 @@ export interface AuthState {
 }
 
 export interface SocketEvent {
-  type: 'message' | 'typing' | 'status' | 'reaction';
+  type: 'message' | 'typing' | 'status' | 'reaction' | 'friend_request' | 'request_accepted';
   payload: any;
 }
