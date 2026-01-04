@@ -47,6 +47,6 @@ export interface AuthState {
 }
 
 export interface SocketEvent {
-  type: 'message' | 'typing' | 'status' | 'reaction' | 'friend_request' | 'request_accepted';
+  type: 'message' | 'typing' | 'status' | 'reaction' | 'friend_request' | 'request_accepted' | 'new_user';
   payload: any;
 }

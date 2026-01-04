@@ -1,9 +1,10 @@
 
 import { User, Chat, Message, AuthState, FriendRequest } from '../types';
 import { STORAGE_KEYS } from '../constants';
+import { socket } from './socket';
 
-// Increment this version to force a database reset across all clients
-const DB_VERSION = '2.1.0'; 
+// Increment this version to force a database reset whenever the code logic changes significantly
+const DB_VERSION = '2.2.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -20,13 +21,15 @@ class ApiService {
   private checkVersionAndReset() {
     const storedVersion = localStorage.getItem(VERSION_KEY);
     if (storedVersion !== DB_VERSION) {
-      console.log(`Database version mismatch (${storedVersion} vs ${DB_VERSION}). Resetting storage...`);
-      // Clear all nexus-related keys
-      Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+      console.log(`[Database] Resetting storage for version ${DB_VERSION}`);
+      // Clear all nexus-related storage to ensure a clean state
       localStorage.removeItem(USERS_DB);
       localStorage.removeItem(CHATS_DB);
       localStorage.removeItem(MESSAGES_DB);
       localStorage.removeItem(REQUESTS_DB);
+      localStorage.removeItem(STORAGE_KEYS.AUTH);
+      localStorage.removeItem(STORAGE_KEYS.CHATS);
+      localStorage.removeItem(STORAGE_KEYS.MESSAGES);
       
       localStorage.setItem(VERSION_KEY, DB_VERSION);
     }
@@ -39,7 +42,7 @@ class ApiService {
   
   private save(key: string, data: any) { 
     localStorage.setItem(key, JSON.stringify(data)); 
-    // Trigger storage event for real-time cross-tab reactivity
+    // Dispatch storage event so other tabs/components are aware of the persistent update
     window.dispatchEvent(new Event('storage'));
   }
 
@@ -52,7 +55,7 @@ class ApiService {
           username: 'Nexus Guide', 
           password: 'password', 
           profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus', 
-          status: 'Your guide to the Nexus network.', 
+          status: 'Always here to help you navigate.', 
           isOnline: true 
         },
         { 
@@ -60,7 +63,7 @@ class ApiService {
           username: 'Alex AI', 
           password: 'password', 
           profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', 
-          status: 'Always online, always thinking.', 
+          status: 'Artificial Intelligence, Real Connection.', 
           isOnline: true 
         }
       ];
@@ -81,7 +84,7 @@ class ApiService {
     };
     
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
-    // Update online status in registry
+    // Set user as online in the shared registry
     this.save(USERS_DB, users.map((u: any) => u.id === user.id ? { ...u, isOnline: true } : u));
     
     return state;
@@ -89,22 +92,27 @@ class ApiService {
 
   async register(username: string, password: string): Promise<AuthState> {
     const users = this.get(USERS_DB);
-    if (users.find((u: any) => u.username.toLowerCase() === username.toLowerCase())) {
-      throw new Error("This username is already registered in our real-time registry.");
+    const normalizedUsername = username.trim();
+
+    if (users.some((u: any) => u.username.toLowerCase() === normalizedUsername.toLowerCase())) {
+      throw new Error("Handle already exists in the live registry.");
     }
 
     const newUser = { 
-      id: `u_${Date.now()}`, 
-      username: username.trim(), 
+      id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
+      username: normalizedUsername, 
       password, 
-      profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`, 
-      status: 'Available', 
+      profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedUsername}`, 
+      status: 'Connected to Nexus', 
       isOnline: true 
     };
 
-    // Immediate persistence
+    // 1. Add to the "database" instantly
     users.push(newUser);
     this.save(USERS_DB, users);
+
+    // 2. Broadcast to all other sessions/tabs that a new user is available
+    socket.emit('new_user', newUser);
 
     const state = { 
       user: newUser as User, 
@@ -119,21 +127,27 @@ class ApiService {
   async searchUsers(query: string): Promise<User[]> {
     if (!query.trim()) return [];
     
-    // Always fetch the freshest data from "database"
+    // Always fetch the freshest snapshot of the USERS_DB
     const users = this.get(USERS_DB);
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const q = query.toLowerCase();
     
-    // Filter out current user and match by username
+    // Exact match prioritization then fuzzy
     return users.filter((u: User) => 
       u.id !== auth.user?.id && 
       u.username.toLowerCase().includes(q)
-    ).slice(0, 15);
+    ).sort((a, b) => {
+      const aStarts = a.username.toLowerCase().startsWith(q);
+      const bStarts = b.username.toLowerCase().startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return 0;
+    }).slice(0, 10);
   }
 
   async sendFriendRequest(toId: string): Promise<FriendRequest> {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
-    if (!auth.user) throw new Error("Authentication required");
+    if (!auth.user) throw new Error("Authentication session expired.");
     
     const requests = this.get(REQUESTS_DB);
     const existing = requests.find((r: FriendRequest) => 
@@ -173,7 +187,6 @@ class ApiService {
 
     if (status === 'accepted') {
       const req = requests[reqIndex];
-      // When accepted, automatically create a chat session
       await this.createChat(req.fromId);
     }
   }
