@@ -19,6 +19,7 @@ export interface User {
   status: string;
   isOnline: boolean;
   lastSeen?: number;
+  role?: 'member' | 'system';
 }
 
 export interface Chat {

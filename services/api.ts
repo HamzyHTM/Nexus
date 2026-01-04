@@ -4,7 +4,7 @@ import { STORAGE_KEYS } from '../constants';
 import { socket } from './socket';
 
 // Increment this version to force a database reset whenever the code logic changes significantly
-const DB_VERSION = '2.3.0'; 
+const DB_VERSION = '2.4.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -47,57 +47,52 @@ class ApiService {
   private seedDatabase() {
     const users = this.get(USERS_DB);
     if (users.length === 0) {
-      const initialUsers = [
+      const initialUsers: User[] = [
         { 
           id: 'u_nexus_guide', 
           username: 'Nexus Guide', 
-          password: 'password', 
           profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus', 
           status: 'Always here to help you navigate.', 
-          isOnline: true 
+          isOnline: true,
+          role: 'system'
         },
         { 
           id: 'u_alex_ai', 
           username: 'Alex AI', 
-          password: 'password', 
           profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', 
           status: 'Artificial Intelligence, Real Connection.', 
-          isOnline: true 
+          isOnline: true,
+          role: 'system'
         },
         { 
           id: 'u_sarah_j', 
           username: 'Sarah Jenkins', 
-          password: 'password', 
           profilePic: 'https://picsum.photos/seed/sarah/200', 
           status: 'At the gym 🏋️', 
-          isOnline: true 
+          isOnline: true,
+          role: 'system'
         },
         { 
           id: 'u_mike_r', 
           username: 'Mike Ross', 
-          password: 'password', 
           profilePic: 'https://picsum.photos/seed/mike/200', 
           status: 'Busy', 
-          isOnline: false 
+          isOnline: false,
+          role: 'system'
         },
         { 
           id: 'u_jessica_p', 
           username: 'Jessica Pearson', 
-          password: 'password', 
           profilePic: 'https://picsum.photos/seed/jessica/200', 
           status: 'Managing the firm', 
-          isOnline: true 
-        },
-        { 
-          id: 'u_louis_l', 
-          username: 'Louis Litt', 
-          password: 'password', 
-          profilePic: 'https://picsum.photos/seed/louis/200', 
-          status: 'You just got Litt up!', 
-          isOnline: false 
+          isOnline: true,
+          role: 'system'
         }
       ];
-      this.save(USERS_DB, initialUsers);
+      // Note: passwords are omitted here as seeded users don't login via the form, 
+      // but if needed we'd store them in a private field.
+      const usersWithPass = initialUsers.map(u => ({ ...u, password: 'password' }));
+      this.save(USERS_DB, usersWithPass);
     }
   }
 
@@ -107,8 +102,9 @@ class ApiService {
     
     if (!user) throw new Error("Invalid username or password.");
     
+    const { password: _, ...userSafe } = user;
     const state = { 
-      user: { ...user, isOnline: true } as User, 
+      user: { ...userSafe, isOnline: true } as User, 
       token: `jwt_${Math.random().toString(36).substr(2)}`, 
       isAuthenticated: true 
     };
@@ -127,22 +123,23 @@ class ApiService {
       throw new Error("Handle already exists in the live registry.");
     }
 
-    const newUser = { 
+    const newUser: User = { 
       id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
       username: normalizedUsername, 
-      password, 
       profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedUsername}`, 
-      status: 'Connected to Nexus', 
-      isOnline: true 
+      status: 'Joined Nexus Community', 
+      isOnline: true,
+      role: 'member'
     };
 
-    users.push(newUser);
+    const userToStore = { ...newUser, password };
+    users.push(userToStore);
     this.save(USERS_DB, users);
 
     socket.emit('new_user', newUser);
 
     const state = { 
-      user: newUser as User, 
+      user: newUser, 
       token: `jwt_${Math.random().toString(36).substr(2)}`, 
       isAuthenticated: true 
     };
@@ -156,22 +153,33 @@ class ApiService {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const q = query.trim().toLowerCase();
     
-    // Filter out the current logged-in user
     let filtered = users.filter((u: User) => u.id !== auth.user?.id);
+
+    // Prioritize Members over System bots in results
+    const sortByRole = (a: User, b: User) => {
+      if (a.role === 'member' && b.role === 'system') return -1;
+      if (a.role === 'system' && b.role === 'member') return 1;
+      return 0;
+    };
 
     if (q) {
       filtered = filtered.filter((u: User) => 
         u.username.toLowerCase().includes(q)
       ).sort((a, b) => {
+        // First priority: starts with the query
         const aStarts = a.username.toLowerCase().startsWith(q);
         const bStarts = b.username.toLowerCase().startsWith(q);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
-        return 0;
+        // Second priority: role (Members first)
+        return sortByRole(a, b);
       });
+    } else {
+      // If no query, show all users sorted by role
+      filtered = filtered.sort(sortByRole);
     }
 
-    return filtered.slice(0, 15);
+    return filtered.slice(0, 20);
   }
 
   async sendFriendRequest(toId: string): Promise<FriendRequest> {

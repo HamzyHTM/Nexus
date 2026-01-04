@@ -57,10 +57,10 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         {/* Header Section */}
         <div className="p-8 pb-4 flex justify-between items-start">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Nexus Search</h2>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Community</h2>
             <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-              Live Registry Access
+              Live Resident Registry
             </p>
           </div>
           <button 
@@ -84,7 +84,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
             <input 
               autoFocus
               type="text" 
-              placeholder="Search by username..."
+              placeholder="Search members..."
               className="w-full pl-14 pr-6 py-5 bg-slate-100 dark:bg-zinc-800/60 rounded-[1.75rem] outline-none focus:ring-4 focus:ring-emerald-500/10 border-2 border-transparent focus:border-emerald-500/20 transition-all font-bold text-lg shadow-inner placeholder:text-slate-300 dark:placeholder:text-zinc-600"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -93,9 +93,9 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
 
           <div className="flex justify-between items-center mb-3 px-1">
              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">
-                {query.trim() ? 'Search Results' : 'Suggested for You'}
+                {query.trim() ? 'Search Results' : 'Recommended Peers'}
              </h4>
-             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.length} Users Found</span>}
+             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.filter(r => r.role === 'member').length} Members Online</span>}
           </div>
 
           {/* Dynamic Results Area */}
@@ -104,7 +104,11 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
               results.map((user, idx) => (
                 <div 
                   key={user.id} 
-                  className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800/30 rounded-[1.5rem] border border-transparent hover:border-emerald-500/10 transition-all group animate-in slide-in-from-bottom-4 duration-500"
+                  className={`flex items-center justify-between p-4 rounded-[1.5rem] border transition-all group animate-in slide-in-from-bottom-4 duration-500 ${
+                    user.role === 'member' 
+                    ? 'bg-emerald-50/30 dark:bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30' 
+                    : 'bg-slate-50 dark:bg-zinc-800/30 border-transparent hover:border-slate-200 dark:hover:border-zinc-700'
+                  }`}
                   style={{ animationDelay: `${idx * 20}ms` }}
                 >
                   <div className="flex items-center gap-4">
@@ -113,7 +117,14 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-zinc-900 ${user.isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-bold text-base leading-none mb-1 group-hover:text-emerald-500 transition-colors truncate">@{user.username}</h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-base leading-none group-hover:text-emerald-500 transition-colors truncate">@{user.username}</h3>
+                        {user.role === 'member' ? (
+                          <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase tracking-tighter rounded">Member</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 text-[8px] font-black uppercase tracking-tighter rounded">Core</span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-[120px]">{user.status}</p>
                     </div>
                   </div>
@@ -146,7 +157,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         <div className="p-6 bg-slate-50/50 dark:bg-zinc-800/50 text-center border-t border-slate-100 dark:border-zinc-800">
            <p className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-[0.4em] flex items-center justify-center gap-4">
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-             Real-Time Peer Discovery Active
+             Nexus Peer-to-Peer Discovery
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
            </p>
         </div>
