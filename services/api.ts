@@ -6,14 +6,20 @@ const USERS_DB = 'nexus_users_real';
 const CHATS_DB = 'nexus_chats_real';
 const MESSAGES_DB = 'nexus_messages_real';
 
-// This service acts as the 'Client API' layer
 class ApiService {
   constructor() {
     this.seedDatabase();
   }
 
-  private get(key: string) { return JSON.parse(localStorage.getItem(key) || '[]'); }
-  private save(key: string, data: any) { localStorage.setItem(key, JSON.stringify(data)); }
+  private get(key: string) { 
+    return JSON.parse(localStorage.getItem(key) || '[]'); 
+  }
+  
+  private save(key: string, data: any) { 
+    localStorage.setItem(key, JSON.stringify(data)); 
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new Event('storage'));
+  }
 
   private seedDatabase() {
     const users = this.get(USERS_DB);
@@ -53,7 +59,6 @@ class ApiService {
     };
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
     
-    // Update online status in "DB"
     const updatedUsers = users.map((u: any) => u.id === user.id ? { ...u, isOnline: true } : u);
     this.save(USERS_DB, updatedUsers);
 
@@ -69,7 +74,7 @@ class ApiService {
     const newUser = {
       id: `u_${Date.now()}`,
       username,
-      password, // In real backend, use bcrypt.hash
+      password,
       profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
       status: 'Hey! I am new here.',
       isOnline: true
@@ -149,19 +154,28 @@ class ApiService {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const currentUserId = auth.user?.id;
 
-    // If no query, return up to 5 suggested users (excluding self)
     if (!query.trim()) {
       return users
         .filter((u: User) => u.id !== currentUserId)
-        .slice(-5)
+        .slice(-8)
         .reverse();
     }
 
     const q = query.toLowerCase();
-    return users.filter((u: User) => 
+    
+    // Multi-tier search: StartsWith first, then Includes
+    const startsWith = users.filter(u => 
       u.id !== currentUserId && 
-      u.username.toLowerCase().includes(q)
+      u.username.toLowerCase().startsWith(q)
     );
+    
+    const contains = users.filter(u => 
+      u.id !== currentUserId && 
+      u.username.toLowerCase().includes(q) && 
+      !u.username.toLowerCase().startsWith(q)
+    );
+
+    return [...startsWith, ...contains].slice(0, 15);
   }
 }
 
