@@ -16,7 +16,6 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
   const [loading, setLoading] = useState(false);
   const [statusMap, setStatusMap] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
 
-  // Initial fetch on mount and debounce search on query change
   useEffect(() => {
     const fetchUsers = async () => {
       setLoading(true);
@@ -38,10 +37,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
     try {
       setStatusMap(prev => ({ ...prev, [toId]: 'sending' }));
       const req = await api.sendFriendRequest(toId);
-      
-      // Notify the recipient in real-time
       socket.emit('friend_request', req);
-      
       setStatusMap(prev => ({ ...prev, [toId]: 'sent' }));
       setTimeout(() => onSent(), 500);
     } catch (err: any) {
@@ -54,13 +50,12 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-2xl animate-in fade-in duration-300">
       <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] overflow-hidden border border-white/5 animate-in zoom-in-95 duration-200">
         
-        {/* Header Section */}
         <div className="p-8 pb-4 flex justify-between items-start">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Community</h2>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Find Peers</h2>
             <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-              Live Resident Registry
+              Real-Time Member Registry
             </p>
           </div>
           <button 
@@ -72,7 +67,6 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         </div>
         
         <div className="px-8 pb-10">
-          {/* Search Bar */}
           <div className="relative mb-6">
             <div className={`absolute left-5 top-1/2 -translate-y-1/2 transition-all duration-300 ${loading ? 'text-emerald-500 rotate-180' : 'text-slate-400'}`}>
               {loading ? (
@@ -84,7 +78,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
             <input 
               autoFocus
               type="text" 
-              placeholder="Search members..."
+              placeholder="Search by handle..."
               className="w-full pl-14 pr-6 py-5 bg-slate-100 dark:bg-zinc-800/60 rounded-[1.75rem] outline-none focus:ring-4 focus:ring-emerald-500/10 border-2 border-transparent focus:border-emerald-500/20 transition-all font-bold text-lg shadow-inner placeholder:text-slate-300 dark:placeholder:text-zinc-600"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -93,22 +87,17 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
 
           <div className="flex justify-between items-center mb-3 px-1">
              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">
-                {query.trim() ? 'Search Results' : 'Recommended Peers'}
+                {query.trim() ? 'Search Results' : 'Registered Members'}
              </h4>
-             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.filter(r => r.role === 'member').length} Members Online</span>}
+             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.length} Members Found</span>}
           </div>
 
-          {/* Dynamic Results Area */}
           <div className="max-h-[300px] overflow-y-auto space-y-3 custom-scrollbar pr-1">
             {results.length > 0 ? (
               results.map((user, idx) => (
                 <div 
                   key={user.id} 
-                  className={`flex items-center justify-between p-4 rounded-[1.5rem] border transition-all group animate-in slide-in-from-bottom-4 duration-500 ${
-                    user.role === 'member' 
-                    ? 'bg-emerald-50/30 dark:bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30' 
-                    : 'bg-slate-50 dark:bg-zinc-800/30 border-transparent hover:border-slate-200 dark:hover:border-zinc-700'
-                  }`}
+                  className="flex items-center justify-between p-4 rounded-[1.5rem] bg-emerald-50/30 dark:bg-emerald-500/5 border border-emerald-500/10 hover:border-emerald-500/30 transition-all group animate-in slide-in-from-bottom-4 duration-500"
                   style={{ animationDelay: `${idx * 20}ms` }}
                 >
                   <div className="flex items-center gap-4">
@@ -119,11 +108,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-base leading-none group-hover:text-emerald-500 transition-colors truncate">@{user.username}</h3>
-                        {user.role === 'member' ? (
-                          <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase tracking-tighter rounded">Member</span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 text-[8px] font-black uppercase tracking-tighter rounded">Core</span>
-                        )}
+                        <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase tracking-tighter rounded">Member</span>
                       </div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-[120px]">{user.status}</p>
                     </div>
@@ -144,20 +129,21 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
             ) : !loading && (
               <div className="text-center py-16 animate-in fade-in zoom-in-95">
                 <div className="w-24 h-24 bg-slate-50 dark:bg-zinc-800/40 rounded-[2.5rem] flex items-center justify-center mx-auto mb-5 border-2 border-dashed border-slate-100 dark:border-zinc-700 opacity-40">
-                  <ICONS.Search size={40} className="text-slate-300" />
+                  <ICONS.Profile size={40} className="text-slate-300" />
                 </div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Registry Empty</h3>
-                <p className="text-sm font-bold text-slate-400 mt-2">No users found matching that criteria.</p>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">Empty Registry</h3>
+                <p className="text-xs font-bold text-slate-400 mt-2 px-6">
+                  Only real users registered on the Nexus appear here. Tell a friend to sign up!
+                </p>
               </div>
             )}
           </div>
         </div>
         
-        {/* Connection Protocol Footer */}
         <div className="p-6 bg-slate-50/50 dark:bg-zinc-800/50 text-center border-t border-slate-100 dark:border-zinc-800">
            <p className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-[0.4em] flex items-center justify-center gap-4">
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-             Nexus Peer-to-Peer Discovery
+             Nexus Protocol Verified Members
              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
            </p>
         </div>

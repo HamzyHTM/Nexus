@@ -3,8 +3,8 @@ import { User, Chat, Message, AuthState, FriendRequest } from '../types';
 import { STORAGE_KEYS } from '../constants';
 import { socket } from './socket';
 
-// Increment this version to force a database reset whenever the code logic changes significantly
-const DB_VERSION = '2.4.0'; 
+// Incrementing version to force a database reset for the new "registered-only" logic
+const DB_VERSION = '2.5.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -21,7 +21,7 @@ class ApiService {
   private checkVersionAndReset() {
     const storedVersion = localStorage.getItem(VERSION_KEY);
     if (storedVersion !== DB_VERSION) {
-      console.log(`[Database] Resetting storage for version ${DB_VERSION}`);
+      console.log(`[Database] Resetting storage for version ${DB_VERSION} (Real Users Only Mode)`);
       localStorage.removeItem(USERS_DB);
       localStorage.removeItem(CHATS_DB);
       localStorage.removeItem(MESSAGES_DB);
@@ -46,53 +46,21 @@ class ApiService {
 
   private seedDatabase() {
     const users = this.get(USERS_DB);
+    // We no longer seed with "Sarah", "Mike", etc. 
+    // We only seed a single system AI for functionality, but we will filter it from search.
     if (users.length === 0) {
-      const initialUsers: User[] = [
-        { 
-          id: 'u_nexus_guide', 
-          username: 'Nexus Guide', 
-          profilePic: 'https://api.dicebear.com/7.x/bottts/svg?seed=nexus', 
-          status: 'Always here to help you navigate.', 
-          isOnline: true,
-          role: 'system'
-        },
+      const systemUsers: any[] = [
         { 
           id: 'u_alex_ai', 
           username: 'Alex AI', 
+          password: 'password', // System hidden
           profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', 
-          status: 'Artificial Intelligence, Real Connection.', 
-          isOnline: true,
-          role: 'system'
-        },
-        { 
-          id: 'u_sarah_j', 
-          username: 'Sarah Jenkins', 
-          profilePic: 'https://picsum.photos/seed/sarah/200', 
-          status: 'At the gym 🏋️', 
-          isOnline: true,
-          role: 'system'
-        },
-        { 
-          id: 'u_mike_r', 
-          username: 'Mike Ross', 
-          profilePic: 'https://picsum.photos/seed/mike/200', 
-          status: 'Busy', 
-          isOnline: false,
-          role: 'system'
-        },
-        { 
-          id: 'u_jessica_p', 
-          username: 'Jessica Pearson', 
-          profilePic: 'https://picsum.photos/seed/jessica/200', 
-          status: 'Managing the firm', 
+          status: 'Artificial Intelligence Assistant', 
           isOnline: true,
           role: 'system'
         }
       ];
-      // Note: passwords are omitted here as seeded users don't login via the form, 
-      // but if needed we'd store them in a private field.
-      const usersWithPass = initialUsers.map(u => ({ ...u, password: 'password' }));
-      this.save(USERS_DB, usersWithPass);
+      this.save(USERS_DB, systemUsers);
     }
   }
 
@@ -127,7 +95,7 @@ class ApiService {
       id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
       username: normalizedUsername, 
       profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalizedUsername}`, 
-      status: 'Joined Nexus Community', 
+      status: 'Nexus Community Member', 
       isOnline: true,
       role: 'member'
     };
@@ -153,30 +121,21 @@ class ApiService {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
     const q = query.trim().toLowerCase();
     
-    let filtered = users.filter((u: User) => u.id !== auth.user?.id);
-
-    // Prioritize Members over System bots in results
-    const sortByRole = (a: User, b: User) => {
-      if (a.role === 'member' && b.role === 'system') return -1;
-      if (a.role === 'system' && b.role === 'member') return 1;
-      return 0;
-    };
+    // EXCLUSIVE FILTER: 
+    // 1. Not the current user
+    // 2. ONLY 'member' role (removes all system/mock contacts)
+    let filtered = users.filter((u: User) => u.id !== auth.user?.id && u.role === 'member');
 
     if (q) {
       filtered = filtered.filter((u: User) => 
         u.username.toLowerCase().includes(q)
       ).sort((a, b) => {
-        // First priority: starts with the query
         const aStarts = a.username.toLowerCase().startsWith(q);
         const bStarts = b.username.toLowerCase().startsWith(q);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
-        // Second priority: role (Members first)
-        return sortByRole(a, b);
+        return 0;
       });
-    } else {
-      // If no query, show all users sorted by role
-      filtered = filtered.sort(sortByRole);
     }
 
     return filtered.slice(0, 20);
