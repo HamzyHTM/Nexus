@@ -4,7 +4,7 @@ import { STORAGE_KEYS } from '../constants';
 import { socket } from './socket';
 
 // Increment this version to force a database reset whenever the code logic changes significantly
-const DB_VERSION = '2.2.0'; 
+const DB_VERSION = '2.3.0'; 
 const VERSION_KEY = 'nexus_db_version';
 
 const USERS_DB = 'nexus_users_real';
@@ -22,7 +22,6 @@ class ApiService {
     const storedVersion = localStorage.getItem(VERSION_KEY);
     if (storedVersion !== DB_VERSION) {
       console.log(`[Database] Resetting storage for version ${DB_VERSION}`);
-      // Clear all nexus-related storage to ensure a clean state
       localStorage.removeItem(USERS_DB);
       localStorage.removeItem(CHATS_DB);
       localStorage.removeItem(MESSAGES_DB);
@@ -42,7 +41,6 @@ class ApiService {
   
   private save(key: string, data: any) { 
     localStorage.setItem(key, JSON.stringify(data)); 
-    // Dispatch storage event so other tabs/components are aware of the persistent update
     window.dispatchEvent(new Event('storage'));
   }
 
@@ -65,6 +63,38 @@ class ApiService {
           profilePic: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', 
           status: 'Artificial Intelligence, Real Connection.', 
           isOnline: true 
+        },
+        { 
+          id: 'u_sarah_j', 
+          username: 'Sarah Jenkins', 
+          password: 'password', 
+          profilePic: 'https://picsum.photos/seed/sarah/200', 
+          status: 'At the gym 🏋️', 
+          isOnline: true 
+        },
+        { 
+          id: 'u_mike_r', 
+          username: 'Mike Ross', 
+          password: 'password', 
+          profilePic: 'https://picsum.photos/seed/mike/200', 
+          status: 'Busy', 
+          isOnline: false 
+        },
+        { 
+          id: 'u_jessica_p', 
+          username: 'Jessica Pearson', 
+          password: 'password', 
+          profilePic: 'https://picsum.photos/seed/jessica/200', 
+          status: 'Managing the firm', 
+          isOnline: true 
+        },
+        { 
+          id: 'u_louis_l', 
+          username: 'Louis Litt', 
+          password: 'password', 
+          profilePic: 'https://picsum.photos/seed/louis/200', 
+          status: 'You just got Litt up!', 
+          isOnline: false 
         }
       ];
       this.save(USERS_DB, initialUsers);
@@ -84,7 +114,6 @@ class ApiService {
     };
     
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
-    // Set user as online in the shared registry
     this.save(USERS_DB, users.map((u: any) => u.id === user.id ? { ...u, isOnline: true } : u));
     
     return state;
@@ -107,11 +136,9 @@ class ApiService {
       isOnline: true 
     };
 
-    // 1. Add to the "database" instantly
     users.push(newUser);
     this.save(USERS_DB, users);
 
-    // 2. Broadcast to all other sessions/tabs that a new user is available
     socket.emit('new_user', newUser);
 
     const state = { 
@@ -125,24 +152,26 @@ class ApiService {
   }
 
   async searchUsers(query: string): Promise<User[]> {
-    if (!query.trim()) return [];
-    
-    // Always fetch the freshest snapshot of the USERS_DB
     const users = this.get(USERS_DB);
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
     
-    // Exact match prioritization then fuzzy
-    return users.filter((u: User) => 
-      u.id !== auth.user?.id && 
-      u.username.toLowerCase().includes(q)
-    ).sort((a, b) => {
-      const aStarts = a.username.toLowerCase().startsWith(q);
-      const bStarts = b.username.toLowerCase().startsWith(q);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
-      return 0;
-    }).slice(0, 10);
+    // Filter out the current logged-in user
+    let filtered = users.filter((u: User) => u.id !== auth.user?.id);
+
+    if (q) {
+      filtered = filtered.filter((u: User) => 
+        u.username.toLowerCase().includes(q)
+      ).sort((a, b) => {
+        const aStarts = a.username.toLowerCase().startsWith(q);
+        const bStarts = b.username.toLowerCase().startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return 0;
+      });
+    }
+
+    return filtered.slice(0, 15);
   }
 
   async sendFriendRequest(toId: string): Promise<FriendRequest> {

@@ -16,17 +16,10 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
   const [loading, setLoading] = useState(false);
   const [statusMap, setStatusMap] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
 
-  // Real-time fetching logic: Queries the Registry instantly
+  // Initial fetch on mount and debounce search on query change
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-    
-    setLoading(true);
-    // Fetch directly from the USERS_DB registry
-    const searchTimer = setTimeout(async () => {
+    const fetchUsers = async () => {
+      setLoading(true);
       try {
         const users = await api.searchUsers(query);
         setResults(users);
@@ -35,9 +28,10 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
       } finally {
         setLoading(false);
       }
-    }, 100); // 100ms debounce for near-instant real-time response
-    
-    return () => clearTimeout(searchTimer);
+    };
+
+    const timer = setTimeout(fetchUsers, query.trim() ? 200 : 0);
+    return () => clearTimeout(timer);
   }, [query]);
 
   const handleSendRequest = async (toId: string) => {
@@ -66,7 +60,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
             <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Nexus Search</h2>
             <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-              Live Database Access
+              Live Registry Access
             </p>
           </div>
           <button 
@@ -78,7 +72,7 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
         </div>
         
         <div className="px-8 pb-10">
-          {/* Search Bar - No initial list, just direct fetching */}
+          {/* Search Bar */}
           <div className="relative mb-6">
             <div className={`absolute left-5 top-1/2 -translate-y-1/2 transition-all duration-300 ${loading ? 'text-emerald-500 rotate-180' : 'text-slate-400'}`}>
               {loading ? (
@@ -97,6 +91,13 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
             />
           </div>
 
+          <div className="flex justify-between items-center mb-3 px-1">
+             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">
+                {query.trim() ? 'Search Results' : 'Suggested for You'}
+             </h4>
+             {!loading && <span className="text-[10px] font-bold text-emerald-500/60">{results.length} Users Found</span>}
+          </div>
+
           {/* Dynamic Results Area */}
           <div className="max-h-[300px] overflow-y-auto space-y-3 custom-scrollbar pr-1">
             {results.length > 0 ? (
@@ -111,15 +112,15 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
                       <img src={user.profilePic} className="w-14 h-14 rounded-2xl object-cover shadow-sm group-hover:rotate-2 transition-transform" alt={user.username} />
                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-zinc-900 ${user.isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-base leading-none mb-1 group-hover:text-emerald-500 transition-colors">@{user.username}</h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{user.status}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-base leading-none mb-1 group-hover:text-emerald-500 transition-colors truncate">@{user.username}</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-[120px]">{user.status}</p>
                     </div>
                   </div>
                   <button 
                     disabled={statusMap[user.id] === 'sent' || statusMap[user.id] === 'sending'}
                     onClick={() => handleSendRequest(user.id)}
-                    className={`px-5 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 ${
+                    className={`px-5 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 ${
                       statusMap[user.id] === 'sent' 
                         ? 'bg-emerald-100 text-emerald-600 shadow-none' 
                         : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/30'
@@ -129,18 +130,13 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
                   </button>
                 </div>
               ))
-            ) : query.trim().length > 0 && !loading ? (
+            ) : !loading && (
               <div className="text-center py-16 animate-in fade-in zoom-in-95">
                 <div className="w-24 h-24 bg-slate-50 dark:bg-zinc-800/40 rounded-[2.5rem] flex items-center justify-center mx-auto mb-5 border-2 border-dashed border-slate-100 dark:border-zinc-700 opacity-40">
                   <ICONS.Search size={40} className="text-slate-300" />
                 </div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">Registry Empty</h3>
                 <p className="text-sm font-bold text-slate-400 mt-2">No users found matching that criteria.</p>
-              </div>
-            ) : !loading && (
-              <div className="text-center py-16 opacity-10 flex flex-col items-center">
-                <ICONS.Users size={64} className="mb-4" />
-                <p className="text-xs font-black uppercase tracking-[0.6em]">Search Live</p>
               </div>
             )}
           </div>
