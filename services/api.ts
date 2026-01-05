@@ -118,30 +118,24 @@ class ApiService {
   }
 
   async searchUsers(query: string): Promise<User[]> {
-    const users = this.get(USERS_DB);
-    const authString = localStorage.getItem(STORAGE_KEYS.AUTH);
-    const auth = authString ? JSON.parse(authString) : {};
-    const q = query.trim().toLowerCase();
-    
-    // STRICT FILTER: 
-    // 1. Not the current logged-in user
-    // 2. ONLY 'member' role (Real users who signed up)
-    let filtered = users.filter((u: User) => u.id !== auth.user?.id && u.role === 'member');
+  if (!query.trim()) return [];
 
-    if (q) {
-      filtered = filtered.filter((u: User) => 
-        u.username.toLowerCase().includes(q)
-      ).sort((a, b) => {
-        const aStarts = a.username.toLowerCase().startsWith(q);
-        const bStarts = b.username.toLowerCase().startsWith(q);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return 0;
-      });
-    }
+  const users: User[] = this.get(USERS_DB);
+  const auth = JSON.parse(
+    localStorage.getItem(STORAGE_KEYS.AUTH) || '{}'
+  );
 
-    return filtered.slice(0, 20);
-  }
+  const q = query.toLowerCase();
+
+  return users.filter((user) => {
+    // exclude current user
+    if (user.id === auth?.user?.id) return false;
+
+    // match username directly from "database"
+    return user.username.toLowerCase().includes(q);
+  });
+}
+
 
   async sendFriendRequest(toId: string): Promise<FriendRequest> {
     const auth = JSON.parse(localStorage.getItem(STORAGE_KEYS.AUTH) || '{}');

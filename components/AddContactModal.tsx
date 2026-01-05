@@ -17,21 +17,31 @@ const AddContactModal: React.FC<AddContactModalProps> = ({ onClose, onSent }) =>
   const [statusMap, setStatusMap] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      setLoading(true);
-      try {
-        const users = await api.searchUsers(query);
-        setResults(users);
-      } catch (err) {
-        console.error("Registry lookup failed", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  let active = true;
 
-    const timer = setTimeout(fetchUsers, query.trim() ? 250 : 0);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const runSearch = async () => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const users = await api.searchUsers(query);
+      if (active) setResults(users);
+    } finally {
+      if (active) setLoading(false);
+    }
+  };
+
+  const timer = setTimeout(runSearch, 300);
+
+  return () => {
+    active = false;
+    clearTimeout(timer);
+  };
+}, [query]);
+
 
   const handleSendRequest = async (toId: string) => {
     try {
